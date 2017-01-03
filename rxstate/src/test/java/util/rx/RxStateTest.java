@@ -10,7 +10,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicLong;
 
 import rx.Scheduler;
-import rx.observers.SerializedSubscriber;
 import rx.observers.TestSubscriber;
 import rx.schedulers.Schedulers;
 import rx.schedulers.TestScheduler;
@@ -18,6 +17,7 @@ import util.racer.Racer;
 
 import static java.lang.String.format;
 import static java.util.Arrays.asList;
+import static java.util.Collections.synchronizedList;
 import static org.junit.Assert.assertEquals;
 import static util.racer.Racer.race;
 
@@ -56,30 +56,43 @@ public class RxStateTest {
 
             RxState<Integer> value = new RxState<>(0, scheduler);
 
-            TestSubscriber<Integer> subscriber = new TestSubscriber<>();
-            value.values(RxState.StartWith.IMMEDIATE).subscribe(new SerializedSubscriber<>(subscriber));
+            List<TestSubscriber<Integer>> subscribers = synchronizedList(new ArrayList<>());
+            List<RxState.StartWith> startWiths = synchronizedList(new ArrayList<>());
 
             List<List<Runnable>> threads = new ArrayList<>();
 
             for (int i = 0; i < THREADS_NUMBER; i++) {
+                int finalI = i;
                 threads.add(asList(
+                        () -> {
+                            TestSubscriber<Integer> subscriber = new TestSubscriber<>();
+                            subscribers.add(subscriber);
+                            RxState.StartWith startWith = RxState.StartWith.values()[(iterationNumber + finalI) % (RxState.StartWith.values().length - 1) + 1];
+                            startWith = startWith == RxState.StartWith.IMMEDIATE ? RxState.StartWith.SCHEDULE : startWith;
+                            startWiths.add(startWith);
+                            value.values(startWith).subscribe(subscriber);
+                        },
                         () -> value.apply(it -> it + 1),
                         () -> value.apply(it -> it + 1),
                         () -> value.apply(it -> it + 1)));
             }
+            // TODO: write a separate test for StartWith.IMMEDIATE
 
             race(threads);
 
             while (value.isEmitting()) {
             }
 
-            List<Integer> values = subscriber.getOnNextEvents();
-
-            int expectedSize = 1 + 3 * THREADS_NUMBER;
-            int size = values.size();
-            assertEquals(format("values: %s", values), expectedSize, size);
-            for (int i = 0; i < values.size(); i++) {
-                assertEquals(i, (int) values.get(i));
+            for (int s = 0; s < subscribers.size(); s++) {
+                TestSubscriber<Integer> subscriber = subscribers.get(s);
+                List<Integer> values = subscriber.getOnNextEvents();
+                if (values.size() > 0) {
+                    ArrayList<Integer> expected = new ArrayList<>(values.size());
+                    for (int i = 0, v = values.get(0); i < values.size(); i++, v++) {
+                        expected.add(v);
+                    }
+                    assertEquals("startWith: " + startWiths.get(s), expected, values);
+                }
             }
 
             done.incrementAndGet();

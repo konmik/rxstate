@@ -65,7 +65,6 @@ public class RxState<T> {
             }
         }
 
-        raceTestDelay.call();
         emit();
     }
 
@@ -74,9 +73,29 @@ public class RxState<T> {
      */
     public Observable<T> values(StartWith startWith) {
         return Observable
-                .<T>create(subscriber -> {
+                .create(subscriber -> {
+                    T emit = null;
+                    boolean doEmit = false;
+                    boolean added = false; // we add subscriber only at the moment when we want to start receiving items
                     synchronized (this) {
-                        subscribers.add(subscriber);
+                        if (startWith == StartWith.IMMEDIATE) {
+                            if (emitting) {
+                                queue.add(new Entry<>(subscriber, value));
+                                subscribers.add(subscriber);
+                                added = true;
+                            } else {
+                                emit = value;
+                                doEmit = true;
+                            }
+                        }
+                    }
+                    if (doEmit) {
+                        subscriber.onNext(emit);
+                    }
+                    synchronized (this) {
+                        if (!added) {
+                            subscribers.add(subscriber);
+                        }
                         if (startWith == StartWith.SCHEDULE) {
                             queue.add(new Entry<>(subscriber, value));
                         }
@@ -87,9 +106,7 @@ public class RxState<T> {
                         }
                     }));
                     emit();
-                })
-                .startWith(startWith != StartWith.IMMEDIATE ? Observable.<T>empty() :
-                        Observable.defer(() -> Observable.just(value)));
+                });
     }
 
     /**
@@ -131,8 +148,6 @@ public class RxState<T> {
 
         for (; ; ) {
 
-            raceTestDelay.call();
-
             Entry<T> entry;
             synchronized (this) {
                 if (queue.isEmpty()) {
@@ -141,8 +156,6 @@ public class RxState<T> {
                 }
                 entry = queue.poll();
             }
-
-            raceTestDelay.call();
 
             entry.subscriber.onNext(entry.value);
         }
