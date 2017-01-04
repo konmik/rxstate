@@ -125,7 +125,10 @@ public class RxState<T> {
             emit = value;
         }
         subscriber.onNext(emit);
-        onSubscribeNo(subscriber);
+        synchronized (this) {
+            subscribers.add(subscriber);
+        }
+        addUnsubscribe(subscriber);
     }
 
     private void addUnsubscribe(Subscriber<? super T> subscriber) {
