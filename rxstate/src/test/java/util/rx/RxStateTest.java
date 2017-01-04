@@ -48,11 +48,14 @@ public class RxStateTest {
             // amount of iterations with these numbers must be about 10% smaller than with zero multiplier
             delayMultiplier.set(1000 + iterationNumber % 10000);
 
+            Scheduler immediate = Schedulers.immediate();
+            Scheduler singleThread = Schedulers.from(Executors.newSingleThreadExecutor());
             List<Scheduler> schedulers = asList(
-                    Schedulers.immediate(), Schedulers.io(),
-                    Schedulers.computation(), Schedulers.newThread(),
-                    Schedulers.from(Executors.newSingleThreadExecutor()));
-            Scheduler scheduler = schedulers.get(iterationNumber % schedulers.size());
+                    immediate, Schedulers.io(),
+                    singleThread,
+                    Schedulers.computation(), Schedulers.newThread());
+            int schedulerI = iterationNumber % schedulers.size();
+            Scheduler scheduler = schedulers.get(schedulerI);
 
             RxState<Integer> value = new RxState<>(0, scheduler);
 
@@ -61,22 +64,28 @@ public class RxStateTest {
 
             List<List<Runnable>> threads = new ArrayList<>();
 
-            for (int i = 0; i < THREADS_NUMBER; i++) {
+            if (scheduler == immediate || scheduler == singleThread) {
+                TestSubscriber<Integer> subscriber = new TestSubscriber<>();
+                subscribers.add(subscriber);
+                startWiths.add(RxState.StartWith.IMMEDIATE);
+                value.values(RxState.StartWith.IMMEDIATE).subscribe(subscriber);
+            }
+
+            for (int i = 1; i < THREADS_NUMBER; i++) {
                 int finalI = i;
                 threads.add(asList(
                         () -> {
-                            TestSubscriber<Integer> subscriber = new TestSubscriber<>();
-                            subscribers.add(subscriber);
                             RxState.StartWith startWith = RxState.StartWith.values()[(iterationNumber + finalI) % (RxState.StartWith.values().length - 1) + 1];
                             startWith = startWith == RxState.StartWith.IMMEDIATE ? RxState.StartWith.SCHEDULE : startWith;
+                            TestSubscriber<Integer> subscriber2 = new TestSubscriber<>();
+                            subscribers.add(subscriber2);
                             startWiths.add(startWith);
-                            value.values(startWith).subscribe(subscriber);
+                            value.values(startWith).subscribe(subscriber2);
                         },
                         () -> value.apply(it -> it + 1),
                         () -> value.apply(it -> it + 1),
                         () -> value.apply(it -> it + 1)));
             }
-            // TODO: write a separate test for StartWith.IMMEDIATE
 
             race(threads);
 
@@ -84,14 +93,14 @@ public class RxStateTest {
             }
 
             for (int s = 0; s < subscribers.size(); s++) {
-                TestSubscriber<Integer> subscriber = subscribers.get(s);
-                List<Integer> values = subscriber.getOnNextEvents();
+                TestSubscriber<Integer> subscriber1 = subscribers.get(s);
+                List<Integer> values = subscriber1.getOnNextEvents();
                 if (values.size() > 0) {
                     ArrayList<Integer> expected = new ArrayList<>(values.size());
                     for (int i = 0, v = values.get(0); i < values.size(); i++, v++) {
                         expected.add(v);
                     }
-                    assertEquals("startWith: " + startWiths.get(s), expected, values);
+                    assertEquals("startWith: " + startWiths.get(s) + ", scheduler: " + schedulerI, expected, values);
                 }
             }
 
