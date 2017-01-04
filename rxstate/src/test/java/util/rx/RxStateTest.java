@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Random;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
 import rx.Scheduler;
@@ -24,7 +25,7 @@ import static util.racer.Racer.race;
 public class RxStateTest {
 
     private static final int MAX_ITERATIONS = Integer.MAX_VALUE;
-    private static final int MAX_DURATION = 60000;
+    private static final int MAX_DURATION = (int) TimeUnit.SECONDS.toMillis(60);
     private static final int THREADS_NUMBER = 20;
 
     long preventOptimization;
@@ -32,13 +33,7 @@ public class RxStateTest {
     @Test
     public void raceTest() throws Exception {
         AtomicLong delayMultiplier = new AtomicLong();
-        Random random = new Random();
-        RxState.raceTestDelay = () -> {
-            double target = random.nextDouble() * delayMultiplier.get();
-            for (int i = 0; i < target; i++) {
-                preventOptimization++;
-            }
-        };
+        initRandomDelay(delayMultiplier);
 
         AtomicLong done = new AtomicLong();
 
@@ -46,7 +41,7 @@ public class RxStateTest {
 
             // these are magic numbers, change them depending on amount of iterations
             // amount of iterations with these numbers must be about 10% smaller than with zero multiplier
-            delayMultiplier.set(1000 + iterationNumber % 10000);
+            applyRandomDelay(delayMultiplier, iterationNumber);
 
             Scheduler immediate = Schedulers.immediate();
             Scheduler singleThread = Schedulers.from(Executors.newSingleThreadExecutor());
@@ -62,8 +57,6 @@ public class RxStateTest {
             List<TestSubscriber<Integer>> subscribers = synchronizedList(new ArrayList<>());
             List<RxState.StartWith> startWiths = synchronizedList(new ArrayList<>());
 
-            List<List<Runnable>> threads = new ArrayList<>();
-
             if (scheduler == immediate || scheduler == singleThread) {
                 TestSubscriber<Integer> subscriber = new TestSubscriber<>();
                 subscribers.add(subscriber);
@@ -71,7 +64,8 @@ public class RxStateTest {
                 value.values(RxState.StartWith.IMMEDIATE).subscribe(subscriber);
             }
 
-            for (int i = 1; i < THREADS_NUMBER; i++) {
+            List<List<Runnable>> threads = new ArrayList<>();
+            for (int i = 0; i < THREADS_NUMBER; i++) {
                 int finalI = i;
                 threads.add(asList(
                         () -> {
@@ -92,17 +86,7 @@ public class RxStateTest {
             while (value.isEmitting()) {
             }
 
-            for (int s = 0; s < subscribers.size(); s++) {
-                TestSubscriber<Integer> subscriber1 = subscribers.get(s);
-                List<Integer> values = subscriber1.getOnNextEvents();
-                if (values.size() > 0) {
-                    ArrayList<Integer> expected = new ArrayList<>(values.size());
-                    for (int i = 0, v = values.get(0); i < values.size(); i++, v++) {
-                        expected.add(v);
-                    }
-                    assertEquals("startWith: " + startWiths.get(s) + ", scheduler: " + schedulerI, expected, values);
-                }
-            }
+            verifySubscribers(subscribers, startWiths, schedulerI);
 
             done.incrementAndGet();
         });
@@ -110,6 +94,34 @@ public class RxStateTest {
         System.out.println(format(Locale.US,
                 "iterations: %d, ignore: %d",
                 done.get(), preventOptimization));
+    }
+
+    private void verifySubscribers(List<TestSubscriber<Integer>> subscribers, List<RxState.StartWith> startWiths, int schedulerI) {
+        for (int s = 0; s < subscribers.size(); s++) {
+            TestSubscriber<Integer> subscriber1 = subscribers.get(s);
+            List<Integer> values = subscriber1.getOnNextEvents();
+            if (values.size() > 0) {
+                ArrayList<Integer> expected = new ArrayList<>(values.size());
+                for (int i = 0, v = values.get(0); i < values.size(); i++, v++) {
+                    expected.add(v);
+                }
+                assertEquals("startWith: " + startWiths.get(s) + ", scheduler: " + schedulerI, expected, values);
+            }
+        }
+    }
+
+    private void initRandomDelay(AtomicLong delayMultiplier) {
+        Random random = new Random();
+        RxState.raceTestDelay = () -> {
+            double target = random.nextDouble() * delayMultiplier.get();
+            for (int i = 0; i < target; i++) {
+                preventOptimization++;
+            }
+        };
+    }
+
+    private void applyRandomDelay(AtomicLong delayMultiplier, int iterationNumber) {
+        delayMultiplier.set(1000 + iterationNumber % 10000);
     }
 
     @Test
