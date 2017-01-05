@@ -55,13 +55,13 @@ public class RxStateTest {
             RxState<Integer> value = new RxState<>(0, scheduler);
 
             List<TestSubscriber<Integer>> subscribers = synchronizedList(new ArrayList<>());
-            List<RxState.StartWith> startWiths = synchronizedList(new ArrayList<>());
+            List<StartWith> startWiths = synchronizedList(new ArrayList<>());
 
             if (scheduler == immediate || scheduler == singleThread) {
                 TestSubscriber<Integer> subscriber = new TestSubscriber<>();
                 subscribers.add(subscriber);
-                startWiths.add(RxState.StartWith.IMMEDIATE);
-                value.values(RxState.StartWith.IMMEDIATE).subscribe(subscriber);
+                startWiths.add(StartWith.IMMEDIATE);
+                value.values(StartWith.IMMEDIATE).subscribe(subscriber);
             }
 
             List<List<Runnable>> threads = new ArrayList<>();
@@ -69,8 +69,8 @@ public class RxStateTest {
                 int finalI = i;
                 threads.add(asList(
                         () -> {
-                            RxState.StartWith startWith = RxState.StartWith.values()[(iterationNumber + finalI) % (RxState.StartWith.values().length - 1) + 1];
-                            startWith = startWith == RxState.StartWith.IMMEDIATE ? RxState.StartWith.SCHEDULE : startWith;
+                            StartWith startWith = StartWith.values()[(iterationNumber + finalI) % (StartWith.values().length - 1) + 1];
+                            startWith = startWith == StartWith.IMMEDIATE ? StartWith.SCHEDULE : startWith;
                             TestSubscriber<Integer> subscriber2 = new TestSubscriber<>();
                             subscribers.add(subscriber2);
                             startWiths.add(startWith);
@@ -96,7 +96,7 @@ public class RxStateTest {
                 done.get(), preventOptimization));
     }
 
-    private void verifySubscribers(List<TestSubscriber<Integer>> subscribers, List<RxState.StartWith> startWiths, int schedulerI) {
+    private void verifySubscribers(List<TestSubscriber<Integer>> subscribers, List<StartWith> startWiths, int schedulerI) {
         for (int s = 0; s < subscribers.size(); s++) {
             TestSubscriber<Integer> subscriber1 = subscribers.get(s);
             List<Integer> values = subscriber1.getOnNextEvents();
@@ -128,7 +128,7 @@ public class RxStateTest {
     public void startImmediate() {
         RxState<Integer> state = new RxState<>(0, Schedulers.immediate());
         TestSubscriber<Integer> subscriber = new TestSubscriber<>();
-        state.values(RxState.StartWith.IMMEDIATE).subscribe(subscriber);
+        state.values(StartWith.IMMEDIATE).subscribe(subscriber);
         subscriber.assertValues(0);
         state.apply(it -> it + 1);
         subscriber.assertValues(0, 1);
@@ -138,7 +138,7 @@ public class RxStateTest {
     public void startNo() {
         RxState<Integer> state = new RxState<>(0, Schedulers.immediate());
         TestSubscriber<Integer> subscriber = new TestSubscriber<>();
-        state.values(RxState.StartWith.NO).subscribe(subscriber);
+        state.values(StartWith.NO).subscribe(subscriber);
         subscriber.assertValues();
         state.apply(it -> it + 1);
         subscriber.assertValues(1);
@@ -149,7 +149,7 @@ public class RxStateTest {
         TestScheduler scheduler = new TestScheduler();
         RxState<Integer> state = new RxState<>(0, scheduler);
         TestSubscriber<Integer> subscriber = new TestSubscriber<>();
-        state.values(RxState.StartWith.SCHEDULE).subscribe(subscriber);
+        state.values(StartWith.SCHEDULE).subscribe(subscriber);
         subscriber.assertValues();
         state.apply(it -> it + 1);
         scheduler.triggerActions();

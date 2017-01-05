@@ -15,24 +15,6 @@ import static rx.functions.Actions.empty;
 
 public class RxState<T> {
 
-    public enum StartWith {
-        /**
-         * No start values will be emitted.
-         */
-        NO,
-
-        /**
-         * Current value will be emitted on the RxState scheduler.
-         */
-        SCHEDULE,
-
-        /**
-         * Current value will be emitted immediately on the subscription thread.
-         * Do this only if you're subscribing already on the RxState scheduler.
-         */
-        IMMEDIATE
-    }
-
     private final Scheduler scheduler;
     private final ConcurrentLinkedQueue<Entry<T>> queue = new ConcurrentLinkedQueue<>();
     private final List<Subscriber<? super T>> subscribers = new CopyOnWriteArrayList<>();
