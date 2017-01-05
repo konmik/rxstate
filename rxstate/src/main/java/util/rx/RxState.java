@@ -13,6 +13,7 @@ import rx.subscriptions.Subscriptions;
 
 import static rx.functions.Actions.empty;
 
+@SuppressWarnings("Duplicates")
 public class RxState<T> {
 
     private final Scheduler scheduler;
@@ -28,15 +29,9 @@ public class RxState<T> {
     }
 
     /**
-     * Apply a function to the value.
+     * Applies a function to the current value, emitting the new returned value.
      * <p>
-     * The passed function receives the current value and must produce a new value
-     * (or can just return the same).
-     * <p>
-     * The function must be pure, because it can be called several times
-     * depending on simultaneous updates of the value (in future implementations).
-     * <p>
-     * The function should also be fast to take less synchronized time.
+     * The function should fast to take less synchronized time.
      */
     public void apply(Func1<T, T> func) {
 
@@ -165,7 +160,7 @@ public class RxState<T> {
 
     /**
      * This is the random delay function that can be set from the test.
-     * It must be called after the each function step.
+     * While testing for race conditions this function can be called after the each function step.
      */
     static Action0 raceTestDelay = empty();
 }

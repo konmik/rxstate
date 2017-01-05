@@ -12,6 +12,7 @@ import io.reactivex.functions.Function;
 
 import static io.reactivex.exceptions.Exceptions.propagate;
 
+@SuppressWarnings("Duplicates")
 public class RxState<T> {
 
     private final Scheduler scheduler;
@@ -20,16 +21,6 @@ public class RxState<T> {
 
     private volatile T value;
     private volatile boolean emitting;
-
-    private static class Entry<T> {
-        final ObservableEmitter<T> emitter;
-        final T value;
-
-        private Entry(ObservableEmitter<T> emitter, T value) {
-            this.emitter = emitter;
-            this.value = value;
-        }
-    }
 
     public RxState(T initialValue, Scheduler scheduler) {
         this.value = initialValue;
@@ -52,26 +43,16 @@ public class RxState<T> {
         emit();
     }
 
-    public Observable<T> values() {
-        return values(true);
-    }
-
-    public Observable<T> values(boolean emit) {
+    public Observable<T> values(StartWith startWith) {
         return Observable.create(emitter -> {
-            synchronized (this) {
-                emitters.add(emitter);
-                if (emit) {
-                    queue.add(new Entry<>(emitter, value));
-                }
+            if (startWith == StartWith.IMMEDIATE) {
+                onSubscribeImmediate(emitter);
+            } else if (startWith == StartWith.SCHEDULE) {
+                onSubscribeSchedule(emitter);
+            } else {
+                onSubscribeNo(emitter);
             }
-            emitter.setDisposable(Disposables.fromAction(() -> emitters.remove(emitter)));
-            emit();
         });
-    }
-
-    public Observable<T> valuesStartImmediate() {
-        return values(false)
-                .startWith(value);
     }
 
     public boolean isEmitting() {
@@ -82,6 +63,50 @@ public class RxState<T> {
 
     public T value() {
         return value;
+    }
+
+    private void onSubscribeNo(ObservableEmitter< T> emitter) {
+        synchronized (this) {
+            emitters.add(emitter);
+        }
+        addUnsubscribe(emitter);
+    }
+
+    private void onSubscribeSchedule(ObservableEmitter<T> subscriber) {
+        synchronized (this) {
+            emitters.add(subscriber);
+            queue.add(new Entry<>(subscriber, value));
+        }
+        addUnsubscribe(subscriber);
+        emit();
+    }
+
+    private void onSubscribeImmediate(ObservableEmitter<T> subscriber) {
+        T emit;
+        synchronized (this) {
+            emit = value;
+        }
+        subscriber.onNext(emit);
+        synchronized (this) {
+            emitters.add(subscriber);
+        }
+        addUnsubscribe(subscriber);
+    }
+
+    private void addUnsubscribe(ObservableEmitter<T> emitter) {
+        emitter.setDisposable(Disposables.fromAction(() -> {
+            synchronized (this) {
+                emitters.remove(emitter);
+            }
+        }));
+    }
+
+    private void emit() {
+        Scheduler.Worker worker = scheduler.createWorker();
+        worker.schedule(() -> {
+            emitLoop();
+            worker.dispose();
+        });
     }
 
     private void emitLoop() {
@@ -107,11 +132,13 @@ public class RxState<T> {
         }
     }
 
-    private void emit() {
-        Scheduler.Worker worker = scheduler.createWorker();
-        worker.schedule(() -> {
-            emitLoop();
-            worker.dispose();
-        });
+    private static class Entry<T> {
+        final ObservableEmitter<T> emitter;
+        final T value;
+
+        private Entry(ObservableEmitter<T> emitter, T value) {
+            this.emitter = emitter;
+            this.value = value;
+        }
     }
 }

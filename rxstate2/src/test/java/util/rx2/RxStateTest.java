@@ -48,7 +48,7 @@ public class RxStateTest {
             RxState<Integer> value = new RxState<>(0, scheduler);
 
             TestObserver<Integer> subscriber = new TestObserver<>();
-            value.values(true).subscribe(new SerializedObserver<>(subscriber));
+            value.values(StartWith.SCHEDULE).subscribe(new SerializedObserver<>(subscriber));
 
             List<List<Runnable>> threads = new ArrayList<>();
 
