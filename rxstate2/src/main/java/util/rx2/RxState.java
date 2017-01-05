@@ -27,13 +27,18 @@ public class RxState<T> {
         this.scheduler = scheduler;
     }
 
+    /**
+     * Applies a function to the current value, emitting the new returned value.
+     * <p>
+     * The function should fast to take less synchronized time.
+     */
     public void apply(Function<T, T> func) {
 
         synchronized (this) {
             try {
                 value = func.apply(value);
-                for (ObservableEmitter<T> subscriber : emitters) {
-                    queue.add(new Entry<>(subscriber, value));
+                for (ObservableEmitter<T> emitter : emitters) {
+                    queue.add(new Entry<>(emitter, value));
                 }
             } catch (Exception e) {
                 throw propagate(e);
@@ -43,6 +48,9 @@ public class RxState<T> {
         emit();
     }
 
+    /**
+     * Observable of sequential value changes.
+     */
     public Observable<T> values(StartWith startWith) {
         return Observable.create(emitter -> {
             if (startWith == StartWith.IMMEDIATE) {
@@ -55,12 +63,22 @@ public class RxState<T> {
         });
     }
 
+    /**
+     * A check if there are values to be emitted.
+     */
     public boolean isEmitting() {
         synchronized (this) {
             return emitting || !queue.isEmpty();
         }
     }
 
+    /**
+     * Use this function only if you guarantee that no other functions are trying to modify the value
+     * the same time, otherwise you're asking for race conditions.
+     * <p>
+     * 1. RxValue can be still emitting previous values on the scheduler.
+     * 2. Concurrent {@link #apply(Function)} can be called.
+     */
     public T value() {
         return value;
     }
@@ -69,31 +87,31 @@ public class RxState<T> {
         synchronized (this) {
             emitters.add(emitter);
         }
-        addUnsubscribe(emitter);
+        setDisposable(emitter);
     }
 
-    private void onSubscribeSchedule(ObservableEmitter<T> subscriber) {
+    private void onSubscribeSchedule(ObservableEmitter<T> emitter) {
         synchronized (this) {
-            emitters.add(subscriber);
-            queue.add(new Entry<>(subscriber, value));
+            emitters.add(emitter);
+            queue.add(new Entry<>(emitter, value));
         }
-        addUnsubscribe(subscriber);
+        setDisposable(emitter);
         emit();
     }
 
-    private void onSubscribeImmediate(ObservableEmitter<T> subscriber) {
+    private void onSubscribeImmediate(ObservableEmitter<T> emitter) {
         T emit;
         synchronized (this) {
             emit = value;
         }
-        subscriber.onNext(emit);
+        emitter.onNext(emit);
         synchronized (this) {
-            emitters.add(subscriber);
+            emitters.add(emitter);
         }
-        addUnsubscribe(subscriber);
+        setDisposable(emitter);
     }
 
-    private void addUnsubscribe(ObservableEmitter<T> emitter) {
+    private void setDisposable(ObservableEmitter<T> emitter) {
         emitter.setDisposable(Disposables.fromAction(() -> {
             synchronized (this) {
                 emitters.remove(emitter);
