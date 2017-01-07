@@ -1,11 +1,12 @@
 apply plugin: 'java'
+apply plugin: 'me.tatarka.retrolambda'
 
 repositories {
     jcenter()
+    mavenCentral()
 }
 
 dependencies {
-
     compile 'io.reactivex:rxjava:1.2.4'
 
     testCompile "junit:junit:4.12"
