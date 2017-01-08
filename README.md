@@ -23,3 +23,30 @@ dependencies {
     compile 'com.konmik.rxstate:rxstate2:0.1.0-beta1'
 }
 ```
+
+## Usage
+
+Code (RxJava1):
+
+```java
+    RxState<Integer> state = new RxState<>(0, Schedulers.immediate());
+    state.values(StartWith.SCHEDULE)
+            .subscribe(it -> System.out.println(it));
+    state.apply(it -> it + 1);
+```
+
+Code (RxJava2):
+
+```java
+    RxState<Integer> state = new RxState<>(0, Schedulers.single());
+    state.values(StartWith.SCHEDULE)
+            .subscribe(it -> System.out.println(it));
+    state.apply(it -> it + 1);
+```
+
+Prints:
+
+```
+0
+1
+```

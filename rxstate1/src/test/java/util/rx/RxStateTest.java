@@ -155,4 +155,12 @@ public class RxStateTest {
         scheduler.triggerActions();
         subscriber.assertValues(0, 1);
     }
+
+    @Test
+    public void simplePrint() throws Exception {
+        RxState<Integer> state = new RxState<>(0, Schedulers.immediate());
+        state.values(StartWith.SCHEDULE)
+                .subscribe(it -> System.out.println(it));
+        state.apply(it -> it + 1);
+    }
 }
